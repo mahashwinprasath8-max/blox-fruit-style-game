@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Blox Fruits – Final Version</title>
+</head>
+<body style="margin:0;background:#87ceeb;overflow:hidden">
+<canvas id="c"></canvas>
+
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+c.width=innerWidth;c.height=innerHeight;
+
+let camX=0,gravity=0.8,ground=520;
+
+/* ===== PLAYER FACTORY ===== */
+function makePlayer(x,color,keys,id){
+ return{
+  id,
+  x,y:300,w:40,h:40,
+  dx:0,dy:0,
+  lvl:+localStorage["lvl"+id]||1,
+  exp:+localStorage["exp"+id]||0,
+  money:+localStorage["money"+id]||0,
+  hp:100,maxHp:100,
+  dead:false,respawn:0,
+  color,keys
+ };
+}
+
+let p1=makePlayer(100,"black",{l:"ArrowLeft",r:"ArrowRight",u:"ArrowUp",m:"z",f:"x"},1);
+let p2=makePlayer(160,"blue",{l:"a",r:"d",u:"w",m:"f",f:"g"},2);
+
+/* ===== INPUT ===== */
+let k={};
+onkeydown=e=>k[e.key]=true;
+onkeyup=e=>k[e.key]=false;
+
+/* ===== ARRAYS ===== */
+let enemies=[],melee=[],fire=[];
+
+/* ===== UTIL ===== */
+const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+
+/* ===== NPC SPAWN ===== */
+function spawnNPC(x){
+ enemies.push({x,y:ground-40,w:40,h:40,hp:60,maxHp:60});
+}
+for(let i=0;i<12;i++)spawnNPC(500+i*150);
+
+/* ===== PLAYER UPDATE ===== */
+function updatePlayer(p){
+ if(p.dead){
+  p.respawn--;
+  if(p.respawn<=0){
+   p.hp=p.maxHp;
+   p.x=100;
+   p.dead=false;
+  }
+  return;
+ }
+
+ p.dx=k[p.keys.l]?-5:k[p.keys.r]?5:0;
+ if(k[p.keys.u]&&p.y>=ground-p.h)p.dy=-15;
+
+ p.dy+=gravity;
+ p.x+=p.dx;p.y+=p.dy;
+ if(p.y+p.h>ground){p.y=ground-p.h;p.dy=0;}
+
+ /* HEALTH REGEN */
+ if(p.hp<p.maxHp)p.hp+=0.05;
+
+ /* ATTACKS */
+ if(k[p.keys.m]){
+  melee.push({x:p.x+20,y:p.y+10,w:30,h:20,l:8,d:10,owner:p});
+  k[p.keys.m]=false;
+ }
+ if(k[p.keys.f]){
+  fire.push({x:p.x+20,y:p.y,dx:8,l:60,owner:p});
+  k[p.keys.f]=false;
+ }
+
+ draw(p.x,p.y,p.w,p.h,p.color);
+ bar(p.x,p.y-8,40,p.hp/p.maxHp,"red");
+
+ if(p.hp<=0){
+  p.dead=true;
+  p.respawn=120;
+ }
+}
+
+/* ===== GAME LOOP ===== */
+function loop(){
+ ctx.clearRect(0,0,c.width,c.height);
+ camX=(p1.x+p2.x)/2-200;
+
+ island(0,400,3500);
+
+ updatePlayer(p1);
+ updatePlayer(p2);
+
+ /* MELEE */
+ melee.forEach((a,i)=>{
+  a.l--;draw(a.x,a.y,a.w,a.h,"silver");
+  enemies.forEach(e=>{if(hit(a,e))e.hp-=a.d;});
+  if(a.l<=0)melee.splice(i,1);
+ });
+
+ /* FIRE */
+ fire.forEach((f,i)=>{
+  f.x+=f.dx;f.l--;
+  ctx.fillStyle="orange";
+  ctx.beginPath();
+  ctx.arc(f.x-camX,f.y,10,0,Math.PI*2);
+  ctx.fill();
+  enemies.forEach(e=>{
+   if(hit({x:f.x,y:f.y,w:20,h:20},e))e.hp-=20;
+  });
+  if(f.l<=0)fire.splice(i,1);
+ });
+
+ /* NPCs */
+ enemies.forEach((e,i)=>{
+  draw(e.x,e.y,e.w,e.h,"red");
+  bar(e.x,e.y-8,40,e.hp/e.maxHp,"darkred");
+
+  if(hit(p1,e))p1.hp-=0.3;
+  if(hit(p2,e))p2.hp-=0.3;
+
+  if(e.hp<=0){
+   [p1,p2].forEach(p=>{
+    p.money+=10;
+    p.exp+=20;
+    let need=p.lvl*50;
+    if(p.exp>=need){
+     p.exp-=need;
+     p.lvl++;
+     p.maxHp+=10;
+     p.hp=p.maxHp;
+    }
+    localStorage["lvl"+p.id]=p.lvl;
+    localStorage["exp"+p.id]=p.exp;
+    localStorage["money"+p.id]=p.money;
+   });
+   enemies.splice(i,1);
+   setTimeout(()=>spawnNPC(e.x),3000);
+  }
+ });
+
+ /* HUD */
+ ctx.fillStyle="white";
+ ctx.fillText("P1 Lv:"+p1.lvl+" EXP:"+p1.exp+" $"+p1.money,20,30);
+ ctx.fillText("P2 Lv:"+p2.lvl+" EXP:"+p2.exp+" $"+p2.money,20,50);
+
+ requestAnimationFrame(loop);
+}
+loop();
+
+/* ===== DRAW FUNCTIONS ===== */
+function draw(x,y,w,h,c){
+ ctx.fillStyle=c;
+ ctx.fillRect(x-camX,y,w,h);
+}
+function island(x,y,w){
+ ctx.fillStyle="#228B22";
+ ctx.fillRect(x-camX,y,w,ground-y);
+}
+function bar(x,y,w,v,c){
+ ctx.fillStyle="#333";ctx.fillRect(x-camX,y,w,6);
+ ctx.fillStyle=c;ctx.fillRect(x-camX,y,w*v,6);
+}
+</script>
+</body>
+</html>
